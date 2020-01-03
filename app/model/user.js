@@ -2,6 +2,7 @@
 module.exports = app => {
   const mongoose = app.mongoose;
   const Schema = mongoose.Schema;
+
   const UserSchema = new Schema({
     username: {
       type: String,
@@ -30,9 +31,14 @@ module.exports = app => {
     },
     role: {
       type: Number,
+      default: 0,
+      immutable: true,
     },
     department: {
       type: String,
+    },
+    config: {
+      type: Schema.Types.Mixed,
     },
     createTime: {
       type: Date,
@@ -45,5 +51,6 @@ module.exports = app => {
   }, {
     timestamps: { createdAt: 'createTime', updatedAt: 'updateTime' },
   });
+  UserSchema.index({ wework_userid: 1, wechat_corpid: 1 }, { unique: true });
   return mongoose.model('User', UserSchema, 'user');
 };

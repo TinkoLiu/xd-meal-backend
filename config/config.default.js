@@ -25,11 +25,6 @@ module.exports = appInfo => {
       },
     },
     validate: {},
-    jwt: {
-      secret: 'secret_str',
-      match: '/api',
-      enable: true,
-    },
   };
   config.redis = {
     client: {
@@ -41,7 +36,7 @@ module.exports = appInfo => {
     agent: true,
   };
   config.wework = {
-    accessToken: {
+    secret: {
       xd: '',
       xdg: '',
       tap: '',
@@ -60,12 +55,31 @@ module.exports = appInfo => {
   config.mongoose = {
     client: {
       url: 'mongodb://127.0.0.1/example',
-      options: {},
+      options: {
+        useCreateIndex: true,
+        useNewUrlParser: true,
+        useUnifiedTopology: true,
+      },
     },
+  };
+  config.logger = {
+    outputJSON: true,
+  };
+  config.session = {
+    key: 'XD-MEAL-SESSION',
+    // XXX: 不确定是否有安全问题，前端需要获取以判断登陆情况
+    httpOnly: false,
+    renew: true,
+  };
+  config.pos = {
+    keys: [],
   };
   return {
     ...config,
     ...userConfig,
+    notfound: {
+      pageUrl: '/404',
+    },
     onerror: {
       accepts() {
         return 'json';

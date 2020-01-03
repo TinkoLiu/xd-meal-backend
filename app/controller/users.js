@@ -5,20 +5,12 @@ const filterParams = require('../helper/filter');
 
 const createRule = {
   username: 'string',
-  password: 'string',
-  email: { type: 'string', required: false },
-  avatar: { type: 'string', required: false },
-  role: { type: 'enum', values: [ 0, 1, 2 ], required: false },
-  department: { type: 'string', required: false },
-};
-
-const editRule = {
-  username: { type: 'string', required: false },
   password: { type: 'string', required: false },
+  psw_salt: { type: 'string', required: false },
   email: { type: 'string', required: false },
   avatar: { type: 'string', required: false },
-  role: { type: 'enum', values: [ 0, 1, 2 ], required: false },
-  department: { type: 'string', required: false },
+  role: { type: 'enum', values: [ 0, 1, 2 ], required: true },
+  department: { type: 'string', required: true },
 };
 
 const loginRule = {
@@ -26,71 +18,128 @@ const loginRule = {
   password: 'string',
 };
 
+const weworkRule = {
+  corp: 'string',
+  code: 'string',
+};
+
+const configRule = {
+  advance: 'bool',
+  randomBtn: 'bool',
+  buffetBtn: 'bool',
+};
+
+
+const resetPswRule = {
+  oldPsw: 'string',
+  newPsw: {
+    type: 'string',
+    max: 22,
+    min: 8,
+    trim: true,
+  },
+};
+
 class UsersController extends Controller {
   async login() {
     const ctx = this.ctx;
-    const app = ctx.app;
     const userService = ctx.service.users;
+    if (userService.isLoggedIn()) {
+      ctx.body = { code: 0, msg: '登录成功' };
+      return;
+    }
     const params = filterParams(ctx.request.body, createRule);
     ctx.validate(loginRule, params);
-    const user = await userService.checkLogin(params);
+    const user = await userService.passwordLogin(params);
     if (!user) {
       throw new HttpError({
         code: 403,
         msg: '用户名或密码无效',
       });
     }
-    const option = {
-      iat: Math.floor(Date.now() / 1000),
-      exp: Math.floor(Date.now() / 1000) + 60 * 60 * 2,
-    };
-    option.sub = user._id;
-    option.iss = 'xdmeal_normal';
-    const token = app.jwt.sign(option, app.config.jwt.secret);
-    this.ctx.body = { token };
+    ctx.body = { code: 0, msg: '登录成功' };
   }
-  async index() {
+
+  async logout() {
     const ctx = this.ctx;
-    ctx.service.users.isAdmin();
-    ctx.body = await ctx.service.users.list();
+    ctx.session.user = undefined;
+    ctx.cookies.set('XD-MEAL-SESSION', 0, {
+      expires: 'Thu, 01 Jan 1970 00:00:00 UTC',
+    });
+    ctx.body = { code: 0, msg: '登出成功' };
   }
-  //
-  async create() {
+
+  async wework() {
     const ctx = this.ctx;
     const userService = ctx.service.users;
-    await userService.isAdmin();
-    const params = filterParams(ctx.request.body, createRule);
-    ctx.validate(createRule, params);
-    ctx.body = await userService.create(params);
-  }
-  //
-  // async show(){
-  //
-  // }
-  //
-  async update() {
-    const ctx = this.ctx;
-    // const userService = ctx.service.users;
-    ctx.validate(editRule);
-    const params = filterParams(ctx.request.body, editRule);
-    const id = ctx.params.id;
-    if (!id) {
-      // || Object.keys(params).length === 0) {
+    const weworkService = ctx.service.wework;
+    const config = ctx.app.config;
+    if (userService.isLoggedIn()) {
       throw new HttpError({
-        code: 422,
-        msg: 'Unprocessable Entity',
+        code: 403,
+        msg: '已登录',
       });
     }
-    ctx.body = await ctx.service.users.update(params, id);
+    const params = filterParams(ctx.request.query, weworkRule);
+    if (!config.wework || !config.wework.secret || !config.wework.secret[params.corp]) {
+      throw new HttpError({
+        code: 403,
+        msg: '未配置企业微信或请求无效',
+      });
+    }
+    const userid = await weworkService.getUserID(params.code, params.corp);
+    await userService.weworkLogin(userid, params.corp);
+    ctx.body = {
+      code: 200,
+      msg: '登录成功',
+    };
+
   }
-  //
-  // async update() {
-  //
-  // }
-  //
-  // async destroy() {
-  //
-  // }
+
+  async userUpdateConfig() {
+    const ctx = this.ctx;
+    const userService = ctx.service.users;
+    const params = filterParams(ctx.request.body, configRule);
+    ctx.validate(configRule, params);
+    userService.updateUserConfig(params);
+    ctx.body = { code: 0, msg: '更新成功' };
+  }
+
+  async resetPsw() {
+    const ctx = this.ctx;
+    const userService = ctx.service.users;
+    const params = filterParams(ctx.request.body, resetPswRule);
+    ctx.validate(resetPswRule, params);
+    const userId = userService.getCurrentUserId();
+    const checkSuccess = await userService.validatePsw(params.oldPsw, {
+      _id: userId,
+    });
+    if (!checkSuccess) {
+      throw new HttpError({
+        code: 403,
+        msg: '用户名密码错误',
+      });
+    }
+    await userService.updatePsw(userId, params.newPsw);
+    this.logout();
+    ctx.body = { code: 0, msg: '更新成功，请重新登陆' };
+  }
+
+  async userProfile() {
+    const ctx = this.ctx;
+    const userService = ctx.service.users;
+    const userId = userService.getCurrentUserId();
+    const profile = await userService.getUserProfile(userId);
+    ctx.body = {
+      avatar: profile.avatar || '',
+      config: profile.config || {
+        advance: false,
+        randomBtn: false,
+        buffetBtn: true,
+      },
+      username: profile.username,
+    };
+  }
 }
 
 module.exports = UsersController;
